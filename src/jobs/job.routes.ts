@@ -26,7 +26,8 @@ jobRouter.post("/", async (req, res) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO jobs (type, payload, priority, max_attempts, run_at, idempotency_key)
+      `INSERT INTO jobs
+         (type, payload, priority, max_attempts, run_at, idempotency_key)
        VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()), $6)
        ON CONFLICT (idempotency_key) DO NOTHING
        RETURNING id, type, payload, status, priority, attempts,
@@ -60,8 +61,31 @@ jobRouter.post("/", async (req, res) => {
         });
       }
 
+      const job = existing.rows[0];
+
+      const samePayload =
+        JSON.stringify(job.payload) === JSON.stringify(input.payload);
+
+      const sameRunAt =
+        input.runAt === undefined ||
+        new Date(job.run_at).getTime() ===
+          new Date(input.runAt).getTime();
+
+      const sameRequest =
+        job.type === input.type &&
+        samePayload &&
+        job.priority === input.priority &&
+        job.max_attempts === input.maxAttempts &&
+        sameRunAt;
+
+      if (!sameRequest) {
+        return res.status(409).json({
+          error: "Idempotency-Key was already used for a different job",
+        });
+      }
+
       return res.status(200).json({
-        job: existing.rows[0],
+        job,
         deduplicated: true,
       });
     }
@@ -78,7 +102,6 @@ jobRouter.post("/", async (req, res) => {
     });
   }
 });
-
 
 jobRouter.get("/:id", async (req, res) => {
   const { id } = req.params;
@@ -111,4 +134,3 @@ jobRouter.get("/:id", async (req, res) => {
     });
   }
 });
-

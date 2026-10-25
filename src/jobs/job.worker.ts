@@ -1,9 +1,14 @@
-
 import { randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
 
 const WORKER_ID = `worker-${randomUUID()}`;
 const LEASE_SECONDS = 30;
+
+let stopRequested = false;
+
+export function stopWorker() {
+  stopRequested = true;
+}
 
 export async function claimJob() {
   const result = await pool.query(
@@ -32,11 +37,35 @@ export async function claimJob() {
   return result.rows[0] ?? null;
 }
 
+export async function recoverExpiredJobs() {
+  const result = await pool.query(
+    `UPDATE jobs
+     SET status = CASE
+           WHEN attempts >= max_attempts THEN 'dead'
+           ELSE 'queued'
+         END,
+         run_at = CASE
+           WHEN attempts >= max_attempts THEN run_at
+           ELSE NOW() +
+             (LEAST(POWER(2, attempts), 60) * INTERVAL '1 second')
+         END,
+         last_error = 'Worker lease expired; job recovered',
+         locked_by = NULL,
+         locked_until = NULL,
+         updated_at = NOW()
+     WHERE status = 'running'
+       AND locked_until <= NOW()
+     RETURNING id, status, attempts`,
+  );
 
-export async function completeJob(
-  jobId: string,
-  resultData: unknown,
-) {
+  for (const job of result.rows) {
+    console.warn(`Recovered expired job ${job.id}; status=${job.status}`);
+  }
+
+  return result.rowCount ?? 0;
+}
+
+export async function completeJob(jobId: string, resultData: unknown) {
   const result = await pool.query(
     `UPDATE jobs
      SET status = 'completed',
@@ -56,12 +85,8 @@ export async function completeJob(
   return result.rows[0] ?? null;
 }
 
-export async function failJob(
-  jobId: string,
-  error: unknown,
-) {
-  const message =
-    error instanceof Error ? error.message : String(error);
+export async function failJob(jobId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
 
   const result = await pool.query(
     `UPDATE jobs
@@ -80,14 +105,13 @@ export async function failJob(
      WHERE id = $1
        AND status = 'running'
        AND locked_by = $2
+       AND locked_until > NOW()
      RETURNING id, status, attempts, max_attempts, run_at, last_error`,
     [jobId, WORKER_ID, message.slice(0, 4000)],
   );
 
   return result.rows[0] ?? null;
 }
-
-
 
 async function executeJob(job: {
   id: string;
@@ -121,8 +145,10 @@ const sleep = (ms: number) =>
 export async function startWorker() {
   console.log(`Worker ${WORKER_ID} started`);
 
-  while (true) {
+  while (!stopRequested) {
     try {
+      await recoverExpiredJobs();
+
       const job = await claimJob();
 
       if (!job) {
@@ -152,9 +178,7 @@ export async function startWorker() {
         const failed = await failJob(job.id, error);
 
         if (failed) {
-          console.error(
-            `Job ${job.id} failed; status=${failed.status}`,
-          );
+          console.error(`Job ${job.id} failed; status=${failed.status}`);
         } else {
           console.warn(`Could not record failure for job ${job.id}`);
         }
@@ -164,4 +188,5 @@ export async function startWorker() {
       await sleep(POLL_INTERVAL_MS);
     }
   }
+  console.log("Worker loop stopped.");
 }
