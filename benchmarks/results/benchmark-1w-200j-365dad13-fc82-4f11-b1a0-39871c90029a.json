@@ -1,0 +1,21 @@
+{
+  "runId": "365dad13-fc82-4f11-b1a0-39871c90029a",
+  "startedAt": "2026-10-25T19:47:41.524Z",
+  "finishedAt": "2026-10-25T19:47:44.702Z",
+  "database": "queueforge_benchmark",
+  "jobs": 200,
+  "workers": 1,
+  "completed": 200,
+  "durationMs": 1642.02,
+  "throughputJobsPerSecond": 121.8,
+  "queueWaitMs": {
+    "p50": 1444,
+    "p95": 1677,
+    "p99": 1691
+  },
+  "processingMs": {
+    "p50": 4,
+    "p95": 5,
+    "p99": 7
+  }
+}

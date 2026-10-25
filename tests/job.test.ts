@@ -313,4 +313,25 @@ describe("QueueForge API", () => {
       }),
     );
   });
+  
+  it("returns ready when the database is available", async () => {
+    const response = await request(app).get("/health/ready");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      status: "ready",
+      database: "connected",
+    });
+  });
+
+  it("rejects malformed JSON with a 400 response", async () => {
+    const response = await request(app)
+      .post("/api/v1/jobs")
+      .set("Content-Type", "application/json")
+      .send('{"type":');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Malformed JSON request");
+  });
+
 });

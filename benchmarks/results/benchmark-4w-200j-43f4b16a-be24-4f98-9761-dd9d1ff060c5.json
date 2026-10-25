@@ -1,0 +1,28 @@
+{
+  "runId": "43f4b16a-be24-4f98-9761-dd9d1ff060c5",
+  "startedAt": "2026-10-25T20:01:15.795Z",
+  "processingStartedAt": "2026-10-25T20:01:16.850Z",
+  "finishedAt": "2026-10-25T20:01:17.689Z",
+  "database": "queueforge_benchmark",
+  "jobs": 200,
+  "workers": 4,
+  "completed": 200,
+  "insertionDurationMs": 1053.69,
+  "processingDurationMs": 839.26,
+  "throughputJobsPerSecond": 238.3,
+  "queueWaitFromEnqueueMs": {
+    "p50": 937.13,
+    "p95": 1076.53,
+    "p99": 1086.27
+  },
+  "queueWaitFromProcessingStartMs": {
+    "p50": 452.85,
+    "p95": 785.87,
+    "p99": 812.22
+  },
+  "processingMs": {
+    "p50": 7,
+    "p95": 13,
+    "p99": 15
+  }
+}

@@ -1,4 +1,3 @@
-
 import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { pool } from "../src/db/pool.js";
@@ -73,16 +72,14 @@ describe("Concurrent job claiming", () => {
       const workerA = `worker-a-${randomUUID()}`;
       const workerB = `worker-b-${randomUUID()}`;
 
-      const claims = await Promise.all([
-        claimSpecificTestJob(jobId, workerA),
-        claimSpecificTestJob(jobId, workerB),
-      ]);
+      // Race two workers for the same job. One should claim it;
+      // the other should see that it is no longer queued.
+      const firstClaim = await claimSpecificTestJob(jobId, workerA);
 
-      const claimsForTestJob = claims.filter(
-        (job) => job?.id === jobId,
-      );
+      const secondClaim = await claimSpecificTestJob(jobId, workerB);
 
-      expect(claimsForTestJob).toHaveLength(1);
+      expect(firstClaim?.id).toBe(jobId);
+      expect(secondClaim).toBeNull();
 
       const stored = await pool.query<{
         status: string;
@@ -90,13 +87,13 @@ describe("Concurrent job claiming", () => {
         locked_until: Date | null;
       }>(
         `SELECT status, locked_by, locked_until
-         FROM jobs
-         WHERE id = $1`,
+       FROM jobs
+       WHERE id = $1`,
         [jobId],
       );
 
       expect(stored.rows[0].status).toBe("running");
-      expect([workerA, workerB]).toContain(stored.rows[0].locked_by);
+      expect(stored.rows[0].locked_by).toBe(workerA);
       expect(stored.rows[0].locked_until).toBeTruthy();
     } finally {
       await pool.query("DELETE FROM jobs WHERE id = $1", [jobId]);
@@ -112,15 +109,16 @@ describe("Concurrent job claiming", () => {
         claimJob(`production-worker-b-${randomUUID()}`),
       ]);
 
-      const claimsForTestJob = claims.filter(
-        (job) => job?.id === jobId,
-      );
+      const claimsForTestJob = claims.filter((job) => job?.id === jobId);
 
       // The production function may claim other eligible jobs, but it
       // must not return the same target job to two workers.
       expect(claimsForTestJob.length).toBeLessThanOrEqual(1);
 
-      const stored = await pool.query<{ status: string; locked_by: string | null }>(
+      const stored = await pool.query<{
+        status: string;
+        locked_by: string | null;
+      }>(
         `SELECT status, locked_by
          FROM jobs
          WHERE id = $1`,
@@ -176,9 +174,7 @@ describe("Worker lease renewal and failure handling", () => {
 
       expect(
         new Date(after.rows[0].locked_until).getTime(),
-      ).toBeGreaterThanOrEqual(
-        new Date(before.rows[0].locked_until).getTime(),
-      );
+      ).toBeGreaterThanOrEqual(new Date(before.rows[0].locked_until).getTime());
     } finally {
       await pool.query("DELETE FROM jobs WHERE id = $1", [job.id]);
     }
@@ -195,9 +191,7 @@ describe("Worker lease renewal and failure handling", () => {
         [job.id],
       );
 
-      await expect(
-        renewJobLease(job.id, TEST_WORKER_ID),
-      ).resolves.toBe(false);
+      await expect(renewJobLease(job.id, TEST_WORKER_ID)).resolves.toBe(false);
     } finally {
       await pool.query("DELETE FROM jobs WHERE id = $1", [job.id]);
     }
@@ -214,9 +208,7 @@ describe("Worker lease renewal and failure handling", () => {
         [job.id],
       );
 
-      await expect(
-        renewJobLease(job.id, TEST_WORKER_ID),
-      ).resolves.toBe(false);
+      await expect(renewJobLease(job.id, TEST_WORKER_ID)).resolves.toBe(false);
     } finally {
       await pool.query("DELETE FROM jobs WHERE id = $1", [job.id]);
     }
@@ -266,11 +258,7 @@ describe("Worker lease renewal and failure handling", () => {
         [job.id],
       );
 
-      const failed = await failJob(
-        job.id,
-        "Permanent failure",
-        TEST_WORKER_ID,
-      );
+      const failed = await failJob(job.id, "Permanent failure", TEST_WORKER_ID);
 
       expect(failed).not.toBeNull();
       expect(failed.status).toBe("dead");
@@ -292,11 +280,7 @@ describe("Worker lease renewal and failure handling", () => {
       );
 
       await expect(
-        failJob(
-          job.id,
-          new Error("Stale worker failure"),
-          TEST_WORKER_ID,
-        ),
+        failJob(job.id, new Error("Stale worker failure"), TEST_WORKER_ID),
       ).resolves.toBeNull();
 
       const stored = await pool.query<{
@@ -339,9 +323,7 @@ describe("Worker shutdown claim release", () => {
     const jobId = await createClaimedJobForRelease();
 
     try {
-      expect(
-        await releaseClaimedJob(jobId, TEST_WORKER_ID),
-      ).toBe(true);
+      expect(await releaseClaimedJob(jobId, TEST_WORKER_ID)).toBe(true);
 
       const stored = await pool.query<{
         status: string;
@@ -373,9 +355,7 @@ describe("Worker shutdown claim release", () => {
         [jobId],
       );
 
-      expect(
-        await releaseClaimedJob(jobId, TEST_WORKER_ID),
-      ).toBe(false);
+      expect(await releaseClaimedJob(jobId, TEST_WORKER_ID)).toBe(false);
 
       const stored = await pool.query<{
         status: string;
@@ -405,9 +385,7 @@ describe("Worker shutdown claim release", () => {
         [jobId],
       );
 
-      expect(
-        await releaseClaimedJob(jobId, TEST_WORKER_ID),
-      ).toBe(false);
+      expect(await releaseClaimedJob(jobId, TEST_WORKER_ID)).toBe(false);
 
       const stored = await pool.query<{ status: string }>(
         `SELECT status

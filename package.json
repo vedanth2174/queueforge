@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "worker": "tsx src/worker.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark": "tsx scripts/benchmark.ts"
   },
   "repository": {
     "type": "git",
