@@ -11,21 +11,35 @@ async function main() {
   let shuttingDown = false;
 
   async function shutdown(signal: string) {
-    if (shuttingDown) {
-      return;
-    }
-
+    if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`${signal} received. Shutting down worker...`);
 
+    console.log(`${signal} received. Shutting down worker...`);
     stopWorker();
+
+    const shutdownTimeout = setTimeout(() => {
+      console.error("Graceful shutdown timed out. Forcing process exit.");
+      process.exit(1);
+    }, 30_000);
+
+    shutdownTimeout.unref();
 
     try {
       await workerPromise;
       console.log("Worker stopped successfully.");
+    } catch (error) {
+      console.error("Worker stopped with an error:", error);
+      process.exitCode = 1;
     } finally {
-      await pool.end();
-      console.log("Database connection pool closed.");
+      clearTimeout(shutdownTimeout);
+
+      try {
+        await pool.end();
+        console.log("Database connection pool closed.");
+      } catch (error) {
+        console.error("Failed to close database pool:", error);
+        process.exitCode = 1;
+      }
     }
   }
 
@@ -40,12 +54,14 @@ async function main() {
   await workerPromise;
 }
 
-main().catch(async (error) => {
+main().catch(async (error: unknown) => {
   console.error("Worker failed:", error);
 
   try {
     await pool.end();
-  } finally {
-    process.exitCode = 1;
+  } catch (closeError) {
+    console.error("Failed to close database pool:", closeError);
   }
+
+  process.exitCode = 1;
 });
