@@ -2,10 +2,11 @@
 import { Router } from "express";
 import { pool } from "../db/pool.js";
 import { createJobSchema } from "./job.schema.js";
+import { jobSubmissionRateLimit } from "../middleware/jobSubmissionRateLimit.js";
 
 export const jobRouter = Router();
 
-jobRouter.post("/", async (req, res) => {
+jobRouter.post("/", jobSubmissionRateLimit, async (req, res) => {
   const parsed = createJobSchema.safeParse(req.body);
 
   if (!parsed.success) {

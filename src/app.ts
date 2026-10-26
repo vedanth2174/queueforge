@@ -3,7 +3,7 @@ import "dotenv/config";
 import express from "express";
 import { pool } from "./db/pool.js";
 import { jobRouter } from "./jobs/job.routes.js";
-import type { ErrorRequestHandler } from "express";
+import { apiErrorHandler } from "./middleware/errorHandler.js";
 import cors from "cors";
 
 export const app = express();
@@ -30,7 +30,10 @@ app.use(
   }),
 );
 
-app.use(express.json());
+// Render terminates TLS at one trusted proxy. Set TRUST_PROXY=1 only when
+// running behind that trusted proxy so rate limiting uses the client IP.
+app.set("trust proxy", process.env.TRUST_PROXY === "1" ? 1 : false);
+app.use(express.json({ limit: "256kb" }));
 
 app.get("/health/live", (_req, res) => {
   res.status(200).json({
@@ -90,35 +93,7 @@ app.get("/metrics", async (_req, res) => {
   }
 });
 
-const errorHandler: ErrorRequestHandler = (
-  error,
-  _req,
-  res,
-  _next,
-) => {
-  const candidate = error as {
-    status?: number;
-    type?: string;
-  };
-
-  if (
-    error instanceof SyntaxError &&
-    candidate.status === 400 &&
-    candidate.type === "entity.parse.failed"
-  ) {
-    return res.status(400).json({
-      error: "Malformed JSON request",
-    });
-  }
-
-  console.error("Unhandled API error:", error);
-
-  return res.status(500).json({
-    error: "Internal server error",
-  });
-};
-
-
-app.use(errorHandler);
-
 app.use("/api/v1/jobs", jobRouter);
+
+// Keep the error handler after every route and body-parsing middleware.
+app.use(apiErrorHandler);
