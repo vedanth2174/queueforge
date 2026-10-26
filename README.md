@@ -1,5 +1,12 @@
 # QueueForge
 
+[![CI](https://github.com/vedanth2174/queueforge/actions/workflows/ci.yml/badge.svg)](https://github.com/vedanth2174/queueforge/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-46E3B7?logo=render&logoColor=white)](https://queueforge-gv9b.onrender.com)
+
+**[Open the live dashboard](https://queueforge-gv9b.onrender.com) · [API health](https://queueforge-api.onrender.com/health/live) · [API readiness](https://queueforge-api.onrender.com/health/ready)**
+
+> **Free-tier note:** The first request may take around a minute while the Render services wake from inactivity. If the dashboard initially reports the API as disconnected, wait for the API to start and refresh the page.
+
 **A PostgreSQL-backed background job queue with a React simulation and benchmark dashboard.**
 
 QueueForge demonstrates reliable job submission and processing patterns using Node.js, TypeScript, Express, and PostgreSQL. The repository includes an API, a separate worker process, database migrations, automated tests, a configurable in-browser simulation, and recorded benchmark artifacts.
@@ -45,7 +52,7 @@ QueueForge demonstrates reliable job submission and processing patterns using No
 
 ## Architecture
 
-![QueueForge Architecture](./architecture.png)
+![QueueForge Architecture](./architecture.png)   
 
 The API and worker are separate processes. The frontend simulation runs in the browser and does not start or scale real workers. Benchmark Lab displays saved benchmark records; it does not launch a benchmark from the public browser.
 
@@ -136,8 +143,6 @@ For local development, leave `VITE_API_BASE_URL` empty and set/use the developme
 VITE_API_BASE_URL=
 VITE_DEV_API_PROXY_TARGET=http://localhost:3000
 ```
-
-**Clean-clone note:** `frontend/vite.config.ts` in the repository ZIP imports `./.figma/make/site.json`, but the `.figma` directory is not included in the ZIP/repository contents. Remove the Figma-only configuration dependency and use a standard Vite configuration (and a normal HTML title) before relying on a build from a fresh clone or a hosted build environment.
 
 ## Run the application
 
@@ -256,8 +261,6 @@ Two 500-job runs per configuration in the saved local benchmark records produced
 
 These are measurements from a local benchmark environment using the script in this repository. Throughput is completed jobs divided by the benchmark's **processing phase duration**; it is not API request throughput and excludes the preceding job insertion phase. There were only two runs for each 500-job configuration, and the results varied, so the observed difference does not establish a reliable scaling improvement or production capacity.
 
-Older benchmark artifacts use the `queueWaitMs` field, while newer artifacts use `queueWaitFromEnqueueMs` and `queueWaitFromProcessingStartMs`. Some wait-time values in older records may need a legacy-field fallback in the dashboard parser to display uniformly.
-
 ### Run the benchmark script safely
 
 The benchmark runner is destructive to rows it creates, so it has safeguards and should be used only with a dedicated benchmark database named `queueforge_benchmark`. Create that database and apply both migrations before running it. Do not point the benchmark runner at the application's normal database.
@@ -292,64 +295,16 @@ The current frontend test suite covers deterministic simulation with a fixed see
 
 ## Deployment
 
-The dashboard can be deployed as a static site, while the Express API and queue worker run as separate services connected to a persistent PostgreSQL database. Render supports static sites, public Node web services, background workers, and managed PostgreSQL; see the official [Static Sites](https://render.com/docs/static-sites), [Web Services](https://render.com/docs/web-services), [Background Workers](https://render.com/docs/background-workers), and [PostgreSQL connection](https://render.com/docs/postgresql-creating-connecting) guides.
+QueueForge's dashboard is hosted as a Render static site, and its Express API is hosted at `https://queueforge-api.onrender.com` with PostgreSQL backing it. The deployed dashboard is available at [queueforge-gv9b.onrender.com](https://queueforge-gv9b.onrender.com).
 
-**Do not deploy this ZIP unchanged yet.** Address the prerequisites below first.
+### Render configuration
 
-### Required deployment fixes
+- **Frontend:** Render Static Site; root directory `frontend`; publish directory `dist`; build with `pnpm install --frozen-lockfile && pnpm run typecheck && pnpm test && pnpm run build`; set `VITE_API_BASE_URL=https://queueforge-api.onrender.com` at build time.
+- **API:** Render Web Service from the repository root; build with `npm ci --include=dev && npm run build`; use `npm start` for the API process or `npm run start:all` when running the API and worker together in one web service.
+- **Database:** PostgreSQL configured through `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `POSTGRES_PASSWORD`. Prefer the provider's internal database hostname for services in the same region.
+- **CORS:** Set `CORS_ORIGINS` to the exact deployed frontend origin: `https://queueforge-gv9b.onrender.com` (no trailing slash). Preserve any additional origins you deliberately support, separated by commas.
 
-1. **Remove the missing Figma build dependency.** `frontend/vite.config.ts` imports `frontend/.figma/make/site.json`, but that file is absent from this repository archive. Replace the Figma-specific Vite setup with a regular React/Tailwind Vite config, and set `frontend/index.html` to a normal `lang="en"`, `QueueForge Dashboard` title, and favicon. Test the build from a fresh clone.
-2. **Add production CORS support.** The backend does not currently configure CORS. If the static frontend and API use different domains, browser fetches (especially the JSON `POST` with `Idempotency-Key`) will fail unless the API allows the frontend origin, `Content-Type`, and `Idempotency-Key` headers. Use an explicit environment-based origin allowlist; do not allow arbitrary origins by default.
-3. **Protect public job submission.** CORS is not authentication. Before exposing `POST /api/v1/jobs` publicly, add request rate limits, a bounded JSON body size, and an appropriate abuse-control policy. Do not put a secret in `VITE_*` variables, because they are embedded in the browser bundle.
-4. **Use a production worker command.** The current `npm run worker` starts TypeScript through `tsx`, a development dependency. After `npm run build`, deploy the compiled worker with `node dist/worker.js` (or add a `start:worker` script for that command).
-5. **Bind the API to the platform port and public interface.** Keep using `process.env.PORT` and bind explicitly to `0.0.0.0` for a hosted web service.
-6. **Apply migrations to the hosted database.** Run `001_create_jobs.sql` and then `002_add_idempotency_request.sql` once against the new persistent production database before starting the worker.
-7. **Use a pinned pnpm version.** Add a `packageManager` field such as `"packageManager": "pnpm@10.34.3"` to `frontend/package.json` (consistent with `.mise.toml`) so hosted builds use a deterministic package-manager version.
-
-### Suggested Render service configuration
-
-Create all services in the same region, and use the PostgreSQL **internal** connection details for the API and worker when the platform supports it. Render documents that internal URLs are for services in the same account and region and avoid the public network path.
-
-#### 1. PostgreSQL
-
-Create a managed PostgreSQL database and keep its credentials private. Configure the API and worker with the database's internal connection details using the variables currently read by `src/db/pool.ts`:
-
-- `DB_HOST`
-- `DB_PORT`
-- `DB_NAME`
-- `DB_USER`
-- `POSTGRES_PASSWORD`
-
-Do not expose the database port publicly unless there is a specific operational need.
-
-#### 2. API web service
-
-- Repository: `vedanth2174/queueforge`
-- Root directory: repository root (`.`)
-- Build command: `npm ci --include=dev && npm run build`
-- Start command: `npm start`
-- Health-check path: `/health/ready`
-- Environment: database variables above; let the hosting platform set `PORT`.
-
-#### 3. Worker background service
-
-- Repository: same repository and branch
-- Root directory: repository root (`.`)
-- Build command: `npm ci --include=dev && npm run build`
-- Start command: `node dist/worker.js`
-- Environment: same database variables as the API.
-
-The worker doesn't serve public HTTP traffic and should be deployed as a continuously running background service, not a static site.
-
-#### 4. Frontend static site
-
-- Repository: same repository and branch
-- Root directory: `frontend`
-- Build command (after pinning pnpm): `corepack enable && pnpm install --frozen-lockfile && pnpm run build`
-- Publish directory: `dist`
-- Build-time environment variable: `VITE_API_BASE_URL=https://YOUR-API-SERVICE.onrender.com`
-
-After deployment, set the API's CORS allowlist to the exact static-site origin, such as `https://YOUR-FRONTEND.onrender.com`. Replace placeholders with the actual URLs. `VITE_API_BASE_URL` is a public browser value, not a secret. A Vite dev proxy only works during local development; it does not proxy API calls from a deployed static site.
+The frontend's `VITE_API_BASE_URL` is public build-time configuration, not a secret. Never put database credentials or privileged server secrets in frontend environment variables. Render's free services can sleep after inactivity, so expect a cold start; free-tier availability and database retention limits are platform policies and may change.
 
 ### Production smoke test
 
@@ -369,9 +324,9 @@ After services are deployed:
 - Simulation Lab's workers and performance values are simulated. They do not start real worker processes.
 - Historical benchmark results are local-environment measurements and are not production guarantees.
 - No authentication or rate limiting is currently implemented for the job API. Add appropriate abuse controls before making job submission publicly accessible.
-- Configure CORS explicitly before using a separately hosted frontend.
+- Configure `CORS_ORIGINS` with the exact deployed frontend origin; see Deployment.
 - Keep `.env`, database credentials, and private configuration out of Git. Never expose database credentials or privileged server secrets through frontend build variables.
-- A production database should be persistent, backed up, and sized for the intended usage.
+- For production workloads, use a database plan with appropriate persistence, backups, monitoring, and capacity.
 
 ## Project structure
 
