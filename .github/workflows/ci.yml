@@ -1,0 +1,115 @@
+name: QueueForge CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: queueforge_test
+          POSTGRES_USER: queueforge
+          POSTGRES_PASSWORD: queueforge_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queueforge -d queueforge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_NAME: queueforge_test
+      DB_USER: queueforge
+      POSTGRES_PASSWORD: queueforge_ci_password
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Apply database migrations
+        env:
+          PGPASSWORD: queueforge_ci_password
+        run: |
+          psql -h 127.0.0.1 -U queueforge -d queueforge_test \
+            -v ON_ERROR_STOP=1 -f migrations/001_create_jobs.sql
+          psql -h 127.0.0.1 -U queueforge -d queueforge_test \
+            -v ON_ERROR_STOP=1 -f migrations/002_add_idempotency_request.sql
+
+      - name: Type-check backend
+        run: npm run typecheck
+
+      - name: Run backend tests
+        run: npm test
+
+      - name: Build backend
+        run: npm run build
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.34.3
+          run_install: false
+
+      - name: Verify pnpm version
+        run: pnpm --version
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check frontend
+        run: pnpm run typecheck
+
+      - name: Run frontend tests
+        run: pnpm test
+
+      - name: Build frontend
+        run: pnpm run build
