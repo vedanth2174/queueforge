@@ -11,7 +11,8 @@
     "start": "node dist/server.js",
     "worker": "tsx src/worker.ts",
     "test": "vitest run",
-    "benchmark": "tsx scripts/benchmark.ts"
+    "benchmark": "tsx scripts/benchmark.ts",
+    "start:all": "node scripts/start-all.cjs"
   },
   "repository": {
     "type": "git",
