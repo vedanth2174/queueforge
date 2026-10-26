@@ -4,8 +4,31 @@ import express from "express";
 import { pool } from "./db/pool.js";
 import { jobRouter } from "./jobs/job.routes.js";
 import type { ErrorRequestHandler } from "express";
+import cors from "cors";
 
 export const app = express();
+const allowedOrigins = (
+  process.env.CORS_ORIGINS ??
+  "http://localhost:8443,http://127.0.0.1:8443"
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow command-line clients such as curl, which send no Origin.
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Origin not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Idempotency-Key"],
+  }),
+);
 
 app.use(express.json());
 
