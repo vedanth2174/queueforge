@@ -1,0 +1,21 @@
+{
+  "runId": "f7e31b52-838e-43d1-b1c4-c079eb3cab68",
+  "startedAt": "2026-10-25T19:48:15.120Z",
+  "finishedAt": "2026-10-25T19:48:16.845Z",
+  "database": "queueforge_benchmark",
+  "jobs": 200,
+  "workers": 4,
+  "completed": 200,
+  "durationMs": 571.83,
+  "throughputJobsPerSecond": 349.75,
+  "queueWaitMs": {
+    "p50": 684,
+    "p95": 1169,
+    "p99": 1175
+  },
+  "processingMs": {
+    "p50": 5,
+    "p95": 7,
+    "p99": 9
+  }
+}
